@@ -1,38 +1,62 @@
 import telegram
-from flask import request
-import flask
 from pyngrok import ngrok
+from telegram.ext import (Updater, CommandHandler, MessageHandler, Filters,
+                          ConversationHandler, PicklePersistence)
+import asyncio
+asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
-app = flask.Flask(__name__)
+import logging
 
-global bot
-bot = telegram.Bot(token='941110663:AAGkCQ6F9qKA2R8LDJVuaCSUncsG4AOr-Tk')
+# Enable logging
+logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+                    level=logging.INFO)
 
-@app.route('/api/message/update', methods=['POST'])
-def webhook_handler():
-    if request.method == "POST":
-        # retrieve the message in JSON and then transform it to Telegram object
-        update = telegram.Update.de_json(request.get_json(force=True), bot)
+logger = logging.getLogger(__name__)
 
-        chat_id = update.message.chat.id
+def start(update, context):
+    reply_text = "Hi! I am FinBotAi"
+    if context.user_data:
+        reply_text += "Hello again"
+    else:
+        reply_text += "Whay is your problem?"
+    update.message.reply_text(reply_text)
+    return 0
 
-        # Telegram understands UTF-8, so encode text for unicode compatibility
-        text = update.message.text
+def resend_back(update, context):
+    update.message.reply_text(update.message.text)
+    return 0
 
-        # repeat the same message back (echo)
-        bot.sendMessage(chat_id=chat_id, text=text)
+def done(update, context) :
+    update.message.reply_text("Nice chating, see u later")
 
-    return 'ok'
-
-@app.route('/', methods=['GET'])
 def index():
-    ngrok.connect(5000, 'http', '127.0.0.1')
+    ngrok.connect(80, 'http', '127.0.0.1')
     tunnels = ngrok.get_tunnels()
     index = 0 if "https" in tunnels[0].public_url else 1
-    webhook = tunnels[index].public_url + '/api/message/update'
-    result = bot.set_webhook(webhook)
-    if result:
-        print('ok')
-    else:
-        print('fuck')
-    return 'ok'
+    webhook = tunnels[index].public_url
+    bot = telegram.bot.Bot('1073356395:AAH1rkcoi6FzXXIysMLae8Exn3i4wuMj5l4')
+    bot.set_webhook(webhook)
+    updater = Updater(bot=bot, use_context=True)
+
+    # Get the dispatcher to register handlers
+
+    dp = updater.dispatcher
+    end_command = CommandHandler('done', done)
+    dp.add_handler(end_command)
+    conv_handler = ConversationHandler(
+        entry_points=[CommandHandler('start', start)],
+
+        states={
+            0: [MessageHandler(Filters.text,resend_back)]
+        },
+        fallbacks=[CommandHandler('done', done)]
+    )
+    dp.add_handler(conv_handler)
+    updater.start_webhook(listen='127.0.0.1',
+                      port=80,
+                      webhook_url=webhook)
+    updater.idle()
+
+
+if __name__ == '__main__':
+    index()
