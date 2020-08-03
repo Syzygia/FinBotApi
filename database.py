@@ -1,3 +1,6 @@
+import collections
+import json
+
 from pymongo import MongoClient
 
 client = MongoClient(
@@ -26,6 +29,39 @@ def insert_dialog(path):
 
     dialog = {'dialog': json_string}
     db.dialogs.insert_one(dialog)
+
+
+def convert_csv_to_json(path):
+    json_data = dict()
+    json_data['replies'] = list()
+    json_data['lines'] = list()
+
+    csv_lines = open(path, 'r', encoding='utf-8').readlines()
+    questions = dict()
+    answers = collections.OrderedDict()
+    # csv_lines[0] = csv_lines[0].encode('utf-8-sig').decode('utf-8-sig')
+    # csv_lines = csv_lines[0].split('"')
+    for line in csv_lines:
+        line = line.split('"')[1].split('~')
+        # line 0-id 1-parent id 2-text
+
+        if (not line[1] in questions):
+            questions[line[0]] = dict()
+            questions[line[0]]['text'] = line[2]
+            questions[line[0]]['replies'] = dict()
+            if (line[1] in answers):
+                questions[answers[line[1]]]['replies'][list(answers.keys()).index(line[1])] = len(questions) - 1
+
+        else:
+            answers[str(line[0])] = line[1]
+            json_data['replies'].append(line[2])
+            questions[line[1]]['replies'][(len(json_data['replies']) - 1)] = 0.1
+
+    for key, val in questions.items():
+        json_data['lines'].append(val)
+
+    with open('data.json', 'w+', encoding='utf-8', ) as fp:
+        json.dump(json_data, fp, ensure_ascii=False, indent=4)
 
 
 def insert_user(user_id):
@@ -77,3 +113,6 @@ def reset_user_dialog_status(user_id, dialog_id):
                              {"dialogs": {'_id': dialog_id}}
 
                          })
+
+# convert_csv_to_json('Untitled_6.csv')
+# insert_dialog('data.json')

@@ -12,12 +12,11 @@ REGULAR_CHOICE, CUSTOM_CHOICE, RETRY = range(3)
 class Line:
     def __init__(self, data, replies):
         self.keyboard = []
-        self.leads = []
         self.text = data['text']
-        for reply in data['replies']:
-            self.keyboard.append([replies[int(reply)]])
-        for ref in data['leads']:
-            self.leads.append(ref)
+        self.leads = []
+        for key, value in data['replies'].items():
+            self.keyboard.append([replies[int(key)]])
+            self.leads.append(value)
         self.is_custom = False
 
     def get_next(self, update, context=None):
@@ -36,7 +35,6 @@ class Line:
 class Dialog:
     def __init__(self, _id, dialog_data, pp):
         self._id = _id
-        self.replies = dialog_data['replies']
         self.lines = []
         self.pp = pp
         # self.last_added_state = None
@@ -45,7 +43,7 @@ class Dialog:
 
     def dialog_callback(self, update, context):
         #        self.pp.flush()
-        if context.user_data and context.user_data[self._id]['state'] != []:
+        if context.user_data and self._id in context.user_data and context.user_data[self._id]['state'] != []:
             if context.user_data[self._id]['state'][-1] == 0.1:
                 # Message if want to complete questions once again
                 update.message.reply_text('Wonna try it once again?',

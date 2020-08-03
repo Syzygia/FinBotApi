@@ -30,7 +30,8 @@ def index():
 
     # Get the dispatcher to register handlers
     dp = updater.dispatcher
-    bot_behaviour = dialog_constructor.DialogConstructor(dp, iter(['quiz1']), pp)
+
+    bot_behaviour = dialog_constructor.DialogConstructor(dp, iter(['quiz1', 'quiz2']), pp)
 
     updater.start_webhook(listen='127.0.0.1',
                           port=80,
