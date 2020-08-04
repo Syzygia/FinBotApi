@@ -33,6 +33,7 @@ def insert_dialog(path):
     dialog = {'dialog': json_string}
     db.dialogs.insert_one(dialog)
 
+
 def convert_csv_to_json(path):
     json_data = dict()
     json_data['replies'] = list()
@@ -49,34 +50,36 @@ def convert_csv_to_json(path):
         del (line[0])
         # line 0-id 1-parent id 2-text
 
-        if (not line[PARENT_ID] in questions):
+        if not line[PARENT_ID] in questions:
             questions[line[ID]] = dict()
             questions[line[ID]]['text'] = line[TEXT]
             questions[line[ID]]['replies'] = dict()
+            if len(line) >= 4 and line[TYPE] == 'test_question':
+                questions[line[ID]]['type'] = line[TYPE]
             if (line[PARENT_ID] in answers):
                 questions[answers[line[PARENT_ID]]]['replies'][list(answers.keys()).index(line[PARENT_ID])] = \
                     len(questions) - 1
 
         else:
-            if (len(line) >= 4 and line[TYPE] == 'test_question'):
+            if len(line) >= 4 and line[TYPE] == 'test_question':
                 questions[line[ID]] = dict()
                 questions[line[ID]]['text'] = line[TEXT]
                 questions[line[ID]]['replies'] = dict()
                 questions[line[ID]]['type'] = line[TYPE]
-                if (line[PARENT_ID] in questions):
-                    for k, v in questions[line[PARENT_ID]]['replies'].items():
-                        v['leads'] = len(questions) - 1
+                for k, v in questions[line[PARENT_ID]]['replies'].items():
+                    v['leads'] = len(questions) - 1
 
-            answers[str(line[ID])] = line[PARENT_ID]
-            json_data['replies'].append(line[2])
-            if (len(line) >= 4 and line[TYPE] == 'test_answer'):
-                questions[line[PARENT_ID]]['replies'][(len(json_data['replies']) - 1)] = {'value': line[VALUE],
-                                                                                          'leads': CONVERSATION_END}
             else:
-                questions[line[PARENT_ID]]['replies'][(len(json_data['replies']) - 1)] = CONVERSATION_END
+                answers[str(line[ID])] = line[PARENT_ID]
+                json_data['replies'].append(line[TEXT])
+                if len(line) >= 4 and line[TYPE] == 'test_answer':
+                    questions[line[PARENT_ID]]['replies'][(len(json_data['replies']) - 1)] = {'value': line[VALUE],
+                                                                                              'leads': CONVERSATION_END}
+                else:
+                    questions[line[PARENT_ID]]['replies'][(len(json_data['replies']) - 1)] = CONVERSATION_END
 
-            if (len(line) >= 4 and line[TYPE] == 'custom_choice'):
-                json_data['custom_choices'].append(len(json_data['replies']) - 1)
+                if len(line) >= 4 and line[TYPE] == 'custom_choice':
+                    json_data['custom_choices'].append(len(json_data['replies']) - 1)
 
     for key, val in questions.items():
         json_data['lines'].append(val)
@@ -135,5 +138,5 @@ def reset_user_dialog_status(user_id, dialog_id):
 
                          })
 
-# convert_csv_to_json('FINBOT_AI_1 (1).csv')
-# insert_dialog('data.json')
+#convert_csv_to_json('FINBOT_AI_1 (1).csv')
+#insert_dialog('data.json')
