@@ -8,7 +8,6 @@ client = MongoClient(
 db = client.finbot_db
 
 ID, PARENT_ID, TEXT, TYPE, VALUE = range(5)
-CONVERSATION_END = 0.1
 
 
 def update_dialog(_id, path):
@@ -51,9 +50,7 @@ def convert_csv_to_json(path):
         # line 0-id 1-parent id 2-text
 
         if not line[PARENT_ID] in questions:
-            questions[line[ID]] = dict()
-            questions[line[ID]]['text'] = line[TEXT]
-            questions[line[ID]]['replies'] = dict()
+            init_question(questions, line)
             if len(line) >= 4 and line[TYPE] == 'test_question':
                 questions[line[ID]]['type'] = line[TYPE]
             if (line[PARENT_ID] in answers):
@@ -62,9 +59,7 @@ def convert_csv_to_json(path):
 
         else:
             if len(line) >= 4 and line[TYPE] == 'test_question':
-                questions[line[ID]] = dict()
-                questions[line[ID]]['text'] = line[TEXT]
-                questions[line[ID]]['replies'] = dict()
+                init_question(questions, line)
                 questions[line[ID]]['type'] = line[TYPE]
                 for k, v in questions[line[PARENT_ID]]['replies'].items():
                     v['leads'] = len(questions) - 1
@@ -87,6 +82,12 @@ def convert_csv_to_json(path):
     with open('data.json', 'w+', encoding='utf-8', ) as fp:
         json.dump(json_data, fp, ensure_ascii=False, indent=4)
 
+
+def init_question(questions, line):
+    questions[line[ID]] = dict()
+    questions[line[ID]]['text'] = line[TEXT]
+    questions[line[ID]]['replies'] = dict()
+    questions[line[ID]]['type'] = 'regular_question'
 
 def insert_user(user_id):
     return db.users.update_one({'user_id': user_id},
