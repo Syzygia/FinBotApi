@@ -16,14 +16,18 @@ class Line:
         self.leads = []
         self.values = []
         self.is_test_question = data['type'] == 'test_question'
+        self.should_send_next = False
         self.custom_answers = set()
+        self.type = data['type']
+        if self.type == 'test_final_answer':
+            self.value = int(data['value'])
         for key, value in data['replies'].items():
-            self.keyboard.append([replies[int(key)]])
+            self.keyboard.append([replies[int(key)].strip()])
             if int(key) in custom_choices:
-                self.custom_answers.add(int(key))
+                self.custom_answers.add(len(self.keyboard)-1)
             if self.is_test_question:
                 self.leads.append(value['leads'])
-                self.values.append(int(value['value']))
+                self.values.append(value['value'])
             else:
                 self.leads.append(value)
         self.is_custom = False
@@ -39,10 +43,14 @@ class Line:
         return answer_num
 
     def send_line(self, update, context=None):
+        self.should_send_next = False
+        if len(self.keyboard) == 0:
+            self.should_send_next = True
         update.message.reply_text(self.text, reply_markup=ReplyKeyboardMarkup(self.keyboard, one_time_keyboard=True))
 
     def get_test_value(self, update, context):
         return self.values[self.get_answer_num(update, context)]
+
 
 class Dialog:
     def __init__(self, _id, dialog_data, pp):
@@ -69,10 +77,19 @@ class Dialog:
                 if last_answered_line.is_test_question:
                     self.update_test(line=last_answered_line, update=update, context=context)
                 if last_answered_line.is_custom:
-                    #update.message.reply_text('pls tell us what u want here')
+                    # update.message.reply_text('pls tell us what u want here')
                     return CUSTOM_CHOICE
                 if next_state != ConversationHandler.END:
                     self.lines[next_state].send_line(update, context)
+                    if self.lines[next_state].type == 'test_final':
+                        result = self.finalize_test(next_state, context)
+                        self.lines[result].send_line(update, context)
+                        context.user_data[self._id]['state'].append(result)
+                        return REGULAR_CHOICE
+
+                    if self.lines[next_state].should_send_next:
+                        self.lines[next_state + 1].send_line(update, context)
+                        context.user_data[self._id]['state'].append(next_state + 1)
                     return REGULAR_CHOICE
                 else:
                     # write last message here
@@ -88,7 +105,7 @@ class Dialog:
 
     def custom_choice(self, update, context):
         database.add_custom_choce(self._id, update.effective_user.id, update.message.text)
-        #update.message.reply_text('Thanks for ur suggestion')
+        # update.message.reply_text('Thanks for ur suggestion')
         last_answered = self.get_last_answered(update, context)
         last_answered.send_line(update, context)
         return REGULAR_CHOICE
@@ -108,6 +125,19 @@ class Dialog:
 
     def update_test(self, line, update, context):
         context.user_data[self._id]['test_val'] += line.get_test_value(update, context)
+
+    def finalize_test(self, current_state, context):
+        current_state += 1
+        lowest_diff = 100
+        line_num = -1
+        while self.lines[current_state].type == 'test_final_answer':
+            res = self.lines[current_state].value - context.user_data[self._id]['test_val']
+            if 0 <= res < lowest_diff:
+                line_num = current_state
+                lowest_diff = res
+            current_state += 1
+        return line_num
+
 
 
 class DialogConstructor:

@@ -8,6 +8,7 @@ client = MongoClient(
 db = client.finbot_db
 
 ID, PARENT_ID, TEXT, TYPE, VALUE = range(5)
+CONVERSATION_END = -1
 
 
 def update_dialog(_id, path):
@@ -17,7 +18,7 @@ def update_dialog(_id, path):
             json_string += line
 
     dialog = {'dialog': json_string}
-    db.dialogs.replace_one({'_id': _id}, dialog)
+    db.dialogs.update_one({'_id': _id},{'$set': {'dialog': json_string}})
 
 
 def insert_dialog(path):
@@ -45,22 +46,45 @@ def convert_csv_to_json(path):
     csv_lines[0] = csv_lines[0].encode('utf-8-sig').decode('utf-8-sig')
     for line in csv_lines:
         line = line.rstrip()
+        line = line.replace('"', '')
         line = line.split('~')
         del (line[0])
-        # line 0-id 1-parent id 2-text
+        if len(line) < 3:
+            continue
 
         if not line[PARENT_ID] in questions:
             init_question(questions, line)
             if len(line) >= 4 and line[TYPE] == 'test_question':
-                questions[line[ID]]['type'] = line[TYPE]
-            if (line[PARENT_ID] in answers):
+                questions[line[ID]]['type'] = 'test_question'
+            if line[PARENT_ID] in answers:
                 questions[answers[line[PARENT_ID]]]['replies'][list(answers.keys()).index(line[PARENT_ID])] = \
                     len(questions) - 1
 
         else:
-            if len(line) >= 4 and line[TYPE] == 'test_question':
+            if len(line) >= 4 and 'test_final_answer' == line[TYPE]:
                 init_question(questions, line)
-                questions[line[ID]]['type'] = line[TYPE]
+                questions[line[ID]]['type'] = 'test_final_answer'
+                questions[line[ID]]['value'] = line[VALUE]
+                # for k, v in questions[line[PARENT_ID]]['replies'].items():
+                #     v['leads'] = len(questions) - 1
+                continue
+
+            if len(line) >= 4 and 'test_final' == line[TYPE]:
+                init_question(questions, line)
+                questions[line[ID]]['type'] = 'test_final'
+                for k, v in questions[line[PARENT_ID]]['replies'].items():
+                    v['leads'] = len(questions) - 1
+                continue
+
+            if len(line) >= 4 and 'regular_question' in line[TYPE]:
+                init_question(questions, line)
+                # for k, v in questions[line[PARENT_ID]]['replies'].items():
+                #     v['leads'] = len(questions) - 1
+                continue
+
+            if len(line) >= 4 and 'test_question' in line[TYPE]:
+                init_question(questions, line)
+                questions[line[ID]]['type'] = 'test_question'
                 for k, v in questions[line[PARENT_ID]]['replies'].items():
                     v['leads'] = len(questions) - 1
 
@@ -68,12 +92,13 @@ def convert_csv_to_json(path):
                 answers[str(line[ID])] = line[PARENT_ID]
                 json_data['replies'].append(line[TEXT])
                 if len(line) >= 4 and line[TYPE] == 'test_answer':
-                    questions[line[PARENT_ID]]['replies'][(len(json_data['replies']) - 1)] = {'value': line[VALUE],
-                                                                                              'leads': CONVERSATION_END}
+                    questions[line[PARENT_ID]]['replies'][(len(json_data['replies']) - 1)] = \
+                        {'value': int(line[VALUE].strip().replace('\"', '')),
+                         'leads': CONVERSATION_END}
                 else:
                     questions[line[PARENT_ID]]['replies'][(len(json_data['replies']) - 1)] = CONVERSATION_END
 
-                if len(line) >= 4 and line[TYPE] == 'custom_choice':
+                if len(line) >= 4 and 'custom_choice' in line[TYPE]:
                     json_data['custom_choices'].append(len(json_data['replies']) - 1)
 
     for key, val in questions.items():
@@ -88,6 +113,7 @@ def init_question(questions, line):
     questions[line[ID]]['text'] = line[TEXT]
     questions[line[ID]]['replies'] = dict()
     questions[line[ID]]['type'] = 'regular_question'
+
 
 def insert_user(user_id):
     return db.users.update_one({'user_id': user_id},
@@ -139,5 +165,7 @@ def reset_user_dialog_status(user_id, dialog_id):
 
                          })
 
-#convert_csv_to_json('FINBOT_AI_1 (1).csv')
+
+#convert_csv_to_json('FINBOT_AI_1.csv')
+#update_dialog('5f38c45e4c01cfa7d9d4f220', 'data.json')
 #insert_dialog('data.json')
