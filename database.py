@@ -1,6 +1,7 @@
 import collections
 import json
 
+from bson import ObjectId
 from pymongo import MongoClient
 
 client = MongoClient(
@@ -18,7 +19,7 @@ def update_dialog(_id, path):
             json_string += line
 
     dialog = {'dialog': json_string}
-    db.dialogs.update_one({'_id': _id},{'$set': {'dialog': json_string}})
+    db.dialogs.update_one({'_id': ObjectId(_id)},{'$set': {'dialog': json_string}})
 
 
 def insert_dialog(path):
@@ -165,7 +166,7 @@ def reset_user_dialog_status(user_id, dialog_id):
 
                          })
 
-
-#convert_csv_to_json('FINBOT_AI_1.csv')
-#update_dialog('5f38c45e4c01cfa7d9d4f220', 'data.json')
+#db.dialogs.update_one({'_id': ObjectId('5f3a51eba7075eaa987219cd')},{'$set': {'name': 'Вложить или накопить деньги'}})
+#convert_csv_to_json('latest.csv')
+#update_dialog('5f3a51eba7075eaa987219cd', 'example.json')
 #insert_dialog('data.json')

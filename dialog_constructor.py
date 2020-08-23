@@ -1,8 +1,8 @@
 import json
 
-from telegram import ReplyKeyboardMarkup
+from telegram import ReplyKeyboardMarkup, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import (CommandHandler, MessageHandler, Filters,
-                          ConversationHandler)
+                          ConversationHandler, CallbackQueryHandler)
 
 import database
 
@@ -24,7 +24,7 @@ class Line:
         for key, value in data['replies'].items():
             self.keyboard.append([replies[int(key)].strip()])
             if int(key) in custom_choices:
-                self.custom_answers.add(len(self.keyboard)-1)
+                self.custom_answers.add(len(self.keyboard) - 1)
             if self.is_test_question:
                 self.leads.append(value['leads'])
                 self.values.append(value['value'])
@@ -46,19 +46,38 @@ class Line:
         self.should_send_next = False
         if len(self.keyboard) == 0:
             self.should_send_next = True
-        update.message.reply_text(self.text, reply_markup=ReplyKeyboardMarkup(self.keyboard, one_time_keyboard=True))
+            update.message.reply_text(self.text)
+        # if self.type == 'test_question':
+        #     update.message.reply_text(self.text)
+        #     option_num = 0
+        #     for option in self.keyboard:
+        #         update.message.reply_markdown(text='1', reply_markup=InlineKeyboardMarkup(
+        #             [[InlineKeyboardButton(option[0], callback_data=option_num)]]))
+        #         option_num += 1
+        else:
+            update.message.reply_text(self.text,
+                                      reply_markup=ReplyKeyboardMarkup(self.keyboard, one_time_keyboard=True))
 
     def get_test_value(self, update, context):
         return self.values[self.get_answer_num(update, context)]
 
 
 class Dialog:
-    def __init__(self, _id, dialog_data, pp):
+    def __init__(self, _id, dialog_data, pp, name):
         self._id = _id
         self.lines = []
         self.pp = pp
+        self.name = name
         for line in dialog_data['lines']:
             self.lines.append(Line(line, dialog_data['replies'], set(dialog_data['custom_choices'])))
+
+    def dialog_query_callback(self, update, context):
+        query = update.callback_query
+        query.answer()
+        new_update = update
+        new_update.message = update.callback_query.message
+        #new_update.message.text = self.lines[context.user_data[self._id]['state'][-1]].keyboard[int(query.data)]
+        return self.dialog_callback(new_update, context)
 
     def dialog_callback(self, update, context):
         #        self.pp.flush()
@@ -98,10 +117,15 @@ class Dialog:
         else:
             database.insert_user(update.effective_user.id)
             database.embed_user_dialog(update.effective_user.id, self._id)
-            state_dict = {'state': [0], 'test_val': 0}
+            next_state = -1 if self.name == 'Вложить или накопить деньги' else 0
+            state_dict = {'state': [next_state], 'test_val': 0}
             context.user_data[self._id] = state_dict
-            self.lines[0].send_line(update)
+            self.lines[next_state].send_line(update)
+            if self.lines[next_state].should_send_next:
+                self.lines[next_state + 1].send_line(update, context)
+                context.user_data[self._id]['state'].append(next_state + 1)
             return REGULAR_CHOICE
+
 
     def custom_choice(self, update, context):
         database.add_custom_choce(self._id, update.effective_user.id, update.message.text)
@@ -139,32 +163,31 @@ class Dialog:
         return line_num
 
 
-
 class DialogConstructor:
-    def __init__(self, dispatcher, commands_iter, pp):
+    def __init__(self, dispatcher, pp):
         self.__dialogs = database.get_dialogs()
         self.dialogs = []
-        for dialog in self.__dialogs:
-            dialog_data = json.loads(dialog['dialog'])
-            self.dialogs.append(Dialog(dialog['_id'], dialog_data, pp))
+        for dialog_js in self.__dialogs:
+            dialog_data = json.loads(dialog_js['dialog'])
+            dialog = Dialog(dialog_js['_id'], dialog_data, pp, dialog_js['name'])
+            self.dialogs.append(dialog)
 
-            dialog_name = next(commands_iter)
-            callback_dispatcher = self.dialogs[-1].dialog_callback
             dispatcher.add_handler(ConversationHandler(
-                entry_points=[(CommandHandler(dialog_name, callback_dispatcher,
+                entry_points=[(MessageHandler(Filters.text(dialog_js['name']), dialog.dialog_callback,
                                               pass_user_data=True))],
 
                 states={
-                    REGULAR_CHOICE: [MessageHandler(Filters.text, callback_dispatcher,
-                                                    pass_user_data=True)],
+                    REGULAR_CHOICE: [MessageHandler(Filters.text, dialog.dialog_callback,
+                                                    pass_user_data=True),
+                                     CallbackQueryHandler(dialog.dialog_query_callback)],
 
-                    CUSTOM_CHOICE: [MessageHandler(Filters.text, self.dialogs[-1].custom_choice, pass_user_data=True)],
+                    CUSTOM_CHOICE: [MessageHandler(Filters.text, dialog.custom_choice, pass_user_data=True)],
 
-                    RETRY: [MessageHandler(Filters.text, self.dialogs[-1].retry, pass_user_data=True)]
+                    RETRY: [MessageHandler(Filters.text, dialog.retry, pass_user_data=True)]
 
                 },
                 # TODO fallback command
                 fallbacks={},
-                name=dialog_name,
+                name=dialog_js['name'],
                 persistent=True
             ))
