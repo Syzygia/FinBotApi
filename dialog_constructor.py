@@ -1,13 +1,14 @@
 import json
 
-from telegram import ReplyKeyboardMarkup, InlineKeyboardMarkup, InlineKeyboardButton
+from telegram import ReplyKeyboardMarkup, InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardRemove
 from telegram.ext import (CommandHandler, MessageHandler, Filters,
                           ConversationHandler, CallbackQueryHandler)
 
 import database
+import FinBot
 
-REGULAR_CHOICE, CUSTOM_CHOICE, RETRY = range(3)
-
+REGULAR_CHOICE, CUSTOM_CHOICE, RETRY, SUGGESTION = range(4)
+BACK, HOME, HELP = range(3)
 
 class Line:
     def __init__(self, data, replies, custom_choices):
@@ -47,16 +48,14 @@ class Line:
         if len(self.keyboard) == 0:
             self.should_send_next = True
             update.message.reply_text(self.text)
-        # if self.type == 'test_question':
-        #     update.message.reply_text(self.text)
-        #     option_num = 0
-        #     for option in self.keyboard:
-        #         update.message.reply_markdown(text='1', reply_markup=InlineKeyboardMarkup(
-        #             [[InlineKeyboardButton(option[0], callback_data=option_num)]]))
-        #         option_num += 1
         else:
             update.message.reply_text(self.text,
                                       reply_markup=ReplyKeyboardMarkup(self.keyboard, one_time_keyboard=True))
+            update.message.reply_markdown('.',
+                                          reply_markup=InlineKeyboardMarkup(
+                                              [[InlineKeyboardButton('Назад', callback_data=BACK),
+                                                InlineKeyboardButton('Домой', callback_data=HOME),
+                                                InlineKeyboardButton('Помощь', callback_data=HELP)]]))
 
     def get_test_value(self, update, context):
         return self.values[self.get_answer_num(update, context)]
@@ -74,10 +73,22 @@ class Dialog:
     def dialog_query_callback(self, update, context):
         query = update.callback_query
         query.answer()
-        new_update = update
-        new_update.message = update.callback_query.message
-        #new_update.message.text = self.lines[context.user_data[self._id]['state'][-1]].keyboard[int(query.data)]
-        return self.dialog_callback(new_update, context)
+        update.message = update.callback_query.message
+        if int(query.data) == BACK:
+            last_state = context.user_data[self._id]['state']
+            if len(last_state) >= 2:
+                last_state[-1] =last_state[-2]
+                self.lines[last_state[-1]].send_line(update, context)
+            return REGULAR_CHOICE
+        if int(query.data) == HOME:
+            context.user_data[self._id]['state'] = []
+            FinBot.begin(update, context)
+            return ConversationHandler.END
+        if int(query.data) == HELP:
+            update.message.reply_text(
+                'Пожайлуста сообщите нам о том что бы вы хотели увидеть в нашем боте, что вас беспокоит',
+                reply_markup=ReplyKeyboardRemove())
+            return SUGGESTION
 
     def dialog_callback(self, update, context):
         #        self.pp.flush()
@@ -126,10 +137,8 @@ class Dialog:
                 context.user_data[self._id]['state'].append(next_state + 1)
             return REGULAR_CHOICE
 
-
     def custom_choice(self, update, context):
-        database.add_custom_choce(self._id, update.effective_user.id, update.message.text)
-        # update.message.reply_text('Thanks for ur suggestion')
+        database.add_custom_choice(self._id, update.effective_user.id, update.message.text)
         last_answered = self.get_last_answered(update, context)
         last_answered.send_line(update, context)
         return REGULAR_CHOICE
@@ -162,6 +171,12 @@ class Dialog:
             current_state += 1
         return line_num
 
+    def suggestion(self, update, context):
+        database.add_suggestion(update.effective_user.id, update.message.text)
+        update.message.reply_text('Спасибо за ваш отзыв')
+        self.lines[context.user_data[self._id]['state'][-1]].send_line(update, context)
+        return REGULAR_CHOICE
+
 
 class DialogConstructor:
     def __init__(self, dispatcher, pp):
@@ -183,8 +198,9 @@ class DialogConstructor:
 
                     CUSTOM_CHOICE: [MessageHandler(Filters.text, dialog.custom_choice, pass_user_data=True)],
 
-                    RETRY: [MessageHandler(Filters.text, dialog.retry, pass_user_data=True)]
+                    RETRY: [MessageHandler(Filters.text, dialog.retry, pass_user_data=True)],
 
+                    SUGGESTION: [MessageHandler(Filters.text, dialog.suggestion, pass_user_data=True)]
                 },
                 # TODO fallback command
                 fallbacks={},

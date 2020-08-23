@@ -149,11 +149,19 @@ def get_dialogs():
     return db.dialogs.find({})
 
 
-def add_custom_choce(dialog_id, user_id, text):
+def add_custom_choice(dialog_id, user_id, text):
     db.dialogs.update_one({'_id': dialog_id},
                           {'$push':
                                {'custom_choices': {'user_id': user_id,
                                                    'text': text}
+                                }
+                           })
+
+
+def add_suggestion(user_id, text):
+    db.users.update_one({'_id': user_id},
+                          {'$push':
+                               {'suggestions': {'text': text}
                                 }
                            })
 
@@ -168,5 +176,5 @@ def reset_user_dialog_status(user_id, dialog_id):
 
 #db.dialogs.update_one({'_id': ObjectId('5f3a51eba7075eaa987219cd')},{'$set': {'name': 'Вложить или накопить деньги'}})
 #convert_csv_to_json('latest.csv')
-#update_dialog('5f3a51eba7075eaa987219cd', 'example.json')
+#update_dialog('5f3a5294f67905f0f10ca3e1', 'data.json')
 #insert_dialog('data.json')
